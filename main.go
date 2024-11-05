@@ -154,7 +154,9 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 			const sections = {};
 			videos.forEach(video => {
 				const splited = video.path.split('/'); 
+				console.log('splited',splited.length)
 				if(splited.length === 2){
+					const sectionTitle = splited[0];
 					if (!sections[sectionTitle]) {
 						sections[sectionTitle] = [];
 					}
@@ -167,7 +169,7 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 			// Clear existing content
 			videoList.innerHTML = '<h2>Video Tutorials</h2>';
 
-			if(sections.length>0){
+			if(Object.keys(sections).length>0){
 				for (const section in sections) {
 					const sectionDiv = document.createElement('div');
 					sectionDiv.className = 'section';
