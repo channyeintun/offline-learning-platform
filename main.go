@@ -154,7 +154,6 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 			const sections = {};
 			videos.forEach(video => {
 				const splited = video.path.split('/'); 
-				console.log('splited',splited.length)
 				if(splited.length === 2){
 					const sectionTitle = splited[0];
 					if (!sections[sectionTitle]) {
