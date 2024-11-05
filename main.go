@@ -6,11 +6,13 @@ import (
 	"html/template"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 type Video struct {
 	Name      string `json:"name"`
+	Path      string `json:"path"`
 	Completed bool   `json:"completed"`
 }
 
@@ -30,16 +32,29 @@ func main() {
 }
 
 func loadVideos() {
-	entries, err := os.ReadDir("videos")
-	if err != nil {
-		fmt.Println("Error reading directory:", err)
-		return
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(strings.ToLower(entry.Name()), ".mp4") {
-			videos = append(videos, Video{Name: entry.Name(), Completed: false})
+	videos = []Video{}
+	err := filepath.Walk("videos", func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
 		}
+		if !info.IsDir() && strings.HasSuffix(strings.ToLower(info.Name()), ".mp4") {
+
+			relPath, err := filepath.Rel("videos", path)
+			if err != nil {
+				return err
+			}
+
+			relPath = filepath.ToSlash(relPath)
+			videos = append(videos, Video{
+				Name:      info.Name(),
+				Path:      relPath,
+				Completed: false,
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		fmt.Println("Error walking through directory:", err)
 	}
 }
 
@@ -62,7 +77,7 @@ func loadProgress() {
 
 	for i, video := range videos {
 		for _, savedVideo := range savedVideos {
-			if video.Name == savedVideo.Name {
+			if video.Path == savedVideo.Path {
 				videos[i].Completed = savedVideo.Completed
 				break
 			}
@@ -84,8 +99,12 @@ func saveProgress() {
 }
 
 func handleHome(w http.ResponseWriter, r *http.Request) {
-	tmpl := `
-<!DOCTYPE html>
+	videosJSON, err := json.Marshal(videos)
+	if err != nil {
+		http.Error(w, "Failed to encode videos", http.StatusInternalServerError)
+		return
+	}
+	tmpl := `<!DOCTYPE html>
 <html>
 <head>
 	<title>Video Tutorials</title>
@@ -93,7 +112,9 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 		body { display: flex; font-family: Arial, sans-serif; }
 		#video-player { flex: 2; }
 		#video-list { flex: 1; padding-inline: 20px; height:100vh; overflow:auto; }
-		.video-item { margin-bottom: 10px; }
+		.video-item { display:flex; gap:8px; padding:8px 16px; }
+		.video-item:hover { background:#d1d7dc; }
+		.section-title { background:#f7f9fa; padding:1.6rem; }
 	</style>
 </head>
 <body>
@@ -104,45 +125,131 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 	</div>
 	<div id="video-list">
 		<h2>Video Tutorials</h2>
-		{{range .}}
-		<div class="video-item">
-			<input id="id{{.Name}}" type="checkbox" onchange="toggleCompleted('{{.Name}}')" {{if .Completed}}checked{{end}}>
-			<a href="#" onclick="playVideo('{{.Name}}'); return false;">{{.Name}}</a>
-		</div>
-		{{end}}
+		
 	</div>
 	<script>
-		function playVideo(name) {
+		const videos = {{.VideosJSON}};
+		function playVideo(path) {
 			const player = document.getElementById('player');
-			player.src = '/videos/'+name;
+			player.src = '/videos/'+path;
 
 			player.onended = function() {
-				toggleCompleted(name);
-				 const checkbox = document.getElementById('id'+name);
-				  if (checkbox) {
-					  checkbox.checked = true;
-				  }
+				toggleCompleted(path);
+				const checkbox = document.getElementById('id'+path);
+				if (checkbox) {
+					checkbox.checked = true;
+				}
 			};
 		}
-		function toggleCompleted(name) {
+		function toggleCompleted(path) {
 			fetch('/toggle', {
 				method: 'POST',
 				headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-				body: 'name=' + encodeURIComponent(name)
+				body: 'path=' + encodeURIComponent(path)
 			}).then(response => response.json())
 			  .then(data => console.log(data));
 		}
+
+		function renderVideos(videos) {
+			const sections = {};
+			videos.forEach(video => {
+				const splited = video.path.split('/'); 
+				if(splited.length === 2){
+					if (!sections[sectionTitle]) {
+						sections[sectionTitle] = [];
+					}
+					sections[sectionTitle].push(video);
+				}
+			});
+
+			const videoList = document.getElementById('video-list');
+
+			// Clear existing content
+			videoList.innerHTML = '<h2>Video Tutorials</h2>';
+
+			if(sections.length>0){
+				for (const section in sections) {
+					const sectionDiv = document.createElement('div');
+					sectionDiv.className = 'section';
+
+					const sectionTitle = document.createElement('div');
+					sectionTitle.style["margin-block-end"]="10px";
+					sectionTitle.className = 'section-title';
+					sectionTitle.innerText = section.replace(/^\d+-/, ''); // Remove leading numbers
+					sectionTitle.onclick = function() {
+						const content = sectionDiv.querySelector('.section-content');
+						content.style.display = (content.style.display === 'block') ? 'none' : 'block';
+					};
+
+					sectionDiv.appendChild(sectionTitle);
+
+					const contentDiv = document.createElement('div');
+					contentDiv.style.display = 'none';
+					contentDiv.className = 'section-content';
+
+					sections[section].forEach(video => {
+						const videoItem = document.createElement('div');
+						videoItem.className = 'video-item';
+
+						videoItem.innerHTML = 
+							'<input id="id' + video.path + '" type="checkbox" onchange="toggleCompleted(\'' + video.path + '\')" ' + 
+							(video.completed ? 'checked' : '') + '>';
+
+						const link = document.createElement('a');
+						link.textContent = video.name;
+						link.href="#";
+						link.onclick=function (){
+							playVideo(video.path);
+						}
+
+						videoItem.appendChild(link);
+						contentDiv.appendChild(videoItem);
+					});
+
+					sectionDiv.appendChild(contentDiv);
+					videoList.appendChild(sectionDiv);
+				}
+			}else{
+				videos.forEach(video=>{
+					const videoItem = document.createElement('div');
+					videoItem.className = 'video-item';
+
+					videoItem.innerHTML = 
+						'<input id="id' + video.path + '" type="checkbox" onchange="toggleCompleted(\'' + video.path + '\')" ' + 
+						(video.completed ? 'checked' : '') + '>';
+
+					const link = document.createElement('a');
+					link.textContent = video.name;
+					link.href="#";
+					link.onclick=function (){
+						playVideo(video.path);
+					}
+
+					videoItem.appendChild(link);
+					videoList.appendChild(videoItem);
+				})
+			}
+		}
+
+		// Render videos when the document is ready
+		document.addEventListener('DOMContentLoaded', () => {
+			renderVideos(videos);
+		});
 	</script>
 </body>
-</html>
-`
+</html>`
+
 	t, err := template.New("home").Parse(tmpl)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	err = t.Execute(w, videos)
+	err = t.Execute(w, struct {
+		VideosJSON template.JS
+	}{
+		VideosJSON: template.JS(videosJSON),
+	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -154,9 +261,9 @@ func handleToggle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	name := r.FormValue("name")
+	path := r.FormValue("path")
 	for i, video := range videos {
-		if video.Name == name {
+		if video.Path == path {
 			videos[i].Completed = !videos[i].Completed
 			break
 		}
