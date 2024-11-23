@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -131,16 +132,17 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 		const videos = {{.VideosJSON}};
 		function playVideo(path) {
 			const player = document.getElementById('player');
-			player.src = '/videos/'+path;
+			player.src = '/videos/' + encodeURIComponent(path);
 
 			player.onended = function() {
 				toggleCompleted(path);
-				const checkbox = document.getElementById('id'+path);
+				const checkbox = document.getElementById('id' + path);
 				if (checkbox) {
 					checkbox.checked = true;
 				}
 			};
 		}
+
 		function toggleCompleted(path) {
 			fetch('/toggle', {
 				method: 'POST',
@@ -192,16 +194,17 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 						const videoItem = document.createElement('div');
 						videoItem.className = 'video-item';
 
-						videoItem.innerHTML = 
-							'<input id="id' + video.path + '" type="checkbox" onchange="toggleCompleted(\'' + video.path + '\')" ' + 
-							(video.completed ? 'checked' : '') + '>';
+						videoItem.innerHTML =
+						'<input id="id' + video.path + '" type="checkbox" onchange="toggleCompleted(\'' + encodeURIComponent(video.path) + '\')" ' +
+						(video.completed ? 'checked' : '') + '>';
 
 						const link = document.createElement('a');
 						link.textContent = video.name;
 						link.href="#";
-						link.onclick=function (){
-							playVideo(video.path);
-						}
+						link.onclick = function() {
+    						playVideo(video.path);
+						};
+
 
 						videoItem.appendChild(link);
 						contentDiv.appendChild(videoItem);
@@ -263,8 +266,14 @@ func handleToggle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	path := r.FormValue("path")
+	decodedPath, err := url.QueryUnescape(path) // Decode the URL-encoded path
+	if err != nil {
+		http.Error(w, "Invalid path", http.StatusBadRequest)
+		return
+	}
+
 	for i, video := range videos {
-		if video.Path == path {
+		if video.Path == decodedPath {
 			videos[i].Completed = !videos[i].Completed
 			break
 		}
