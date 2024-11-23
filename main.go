@@ -135,7 +135,7 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 			player.src = '/videos/' + encodeURIComponent(path);
 
 			player.onended = function() {
-				toggleCompleted(path);
+				toggleCompleted(encodeURIComponent(path));
 				const checkbox = document.getElementById('id' + path);
 				if (checkbox) {
 					checkbox.checked = true;
