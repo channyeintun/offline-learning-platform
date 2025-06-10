@@ -125,6 +125,7 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 		<video id="player" width="100%" controls>
 			<source src="" type="video/mp4">
 		</video>
+		<button id="autoplay-btn" style="margin-top:10px;">Auto Play: Off</button>
 	</div>
 	<div id="video-list">
 		<h2>Video Tutorials</h2>
@@ -133,6 +134,17 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 	<script>
 		const videos = {{.VideosJSON}};
 		let currentPlayingPath = null;
+		let autoPlay = false;
+
+		document.addEventListener('DOMContentLoaded', () => {
+			renderVideos(videos);
+
+			const autoplayBtn = document.getElementById('autoplay-btn');
+			autoplayBtn.onclick = function() {
+				autoPlay = !autoPlay;
+				autoplayBtn.textContent = "Auto Play: " + (autoPlay ? "On" : "Off");
+			};
+		});
 
 		function playVideo(path) {
 			const player = document.getElementById('player');
@@ -146,7 +158,43 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 				if (checkbox) {
 					checkbox.checked = true;
 				}
+				if (autoPlay) {
+					const next = getNextVideoPath(path);
+					if (next) {
+						playVideo(next);
+					}
+				}
 			};
+		}
+
+		function getNextVideoPath(currentPath) {
+			const flatList = [];
+			const sections = {};
+			videos.forEach(video => {
+				const splited = video.path.split('/'); 
+				if(splited.length === 2){
+					const sectionTitle = splited[0];
+					if (!sections[sectionTitle]) {
+						sections[sectionTitle] = [];
+					}
+					sections[sectionTitle].push(video);
+				} else {
+					flatList.push(video);
+				}
+			});
+			if (Object.keys(sections).length > 0) {
+				for (const section of Object.keys(sections)) {
+					for (const video of sections[section]) {
+						flatList.push(video);
+					}
+				}
+			}
+			for (let i = 0; i < flatList.length; i++) {
+				if (flatList[i].path === currentPath && i + 1 < flatList.length) {
+					return flatList[i + 1].path;
+				}
+			}
+			return null;
 		}
 
 		function toggleCompleted(path) {
