@@ -116,6 +116,8 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 		.video-item { display:flex; gap:8px; padding:8px 16px; }
 		.video-item:hover { background:#d1d7dc; }
 		.section-title { background:#f7f9fa; padding:1.6rem; }
+		.video-item.active { background: #ffe082 !important; }
+		.section.active > .section-title { background: #ffe082 !important; }
 	</style>
 </head>
 <body>
@@ -130,9 +132,13 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 	</div>
 	<script>
 		const videos = {{.VideosJSON}};
+		let currentPlayingPath = null;
+
 		function playVideo(path) {
 			const player = document.getElementById('player');
 			player.src = '/videos/' + encodeURIComponent(path);
+			currentPlayingPath = path;
+			renderVideos(videos);
 
 			player.onended = function() {
 				toggleCompleted(encodeURIComponent(path));
@@ -175,6 +181,10 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 					const sectionDiv = document.createElement('div');
 					sectionDiv.className = 'section';
 
+					// Highlight section if any video in it is playing
+					const isSectionActive = sections[section].some(video => video.path === currentPlayingPath);
+					if (isSectionActive) sectionDiv.classList.add('active');
+
 					const sectionTitle = document.createElement('div');
 					sectionTitle.style["margin-block-end"]="10px";
 					sectionTitle.className = 'section-title';
@@ -193,6 +203,9 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 					sections[section].forEach(video => {
 						const videoItem = document.createElement('div');
 						videoItem.className = 'video-item';
+
+						// Highlight item if it is playing
+						if (video.path === currentPlayingPath) videoItem.classList.add('active');
 
 						videoItem.innerHTML =
 						'<input id="id' + video.path + '" type="checkbox" onchange="toggleCompleted(\'' + encodeURIComponent(video.path) + '\')" ' +
@@ -217,6 +230,9 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 				videos.forEach(video=>{
 					const videoItem = document.createElement('div');
 					videoItem.className = 'video-item';
+
+					// Highlight item if it is playing
+					if (video.path === currentPlayingPath) videoItem.classList.add('active');
 
 					videoItem.innerHTML = 
 						'<input id="id' + video.path + '" type="checkbox" onchange="toggleCompleted(\'' + video.path + '\')" ' + 
